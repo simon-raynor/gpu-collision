@@ -56,36 +56,37 @@ const computeController = new GPUController(renderer);
 
 
 const things = [];
+const thingpositions = [];
+const thinguvs = [];
+const thingflags = [];
 
-for (let i = 0; i < GPUController.COMPUTE_TEX_WIDTH; i++) {
+for (let i = 0; i < 10; i++) {
     things.push(
-        new WorldObject(
-            computeController,
+        computeController.addItem(
             new THREE.Vector3(i * 10, 0, 0),
             new THREE.Vector3().random()
         )
     );
+    thingpositions.push(0, 0, 0);
+    thinguvs.push(
+        (i % GPUController.COMPUTE_TEX_WIDTH)
+            / GPUController.COMPUTE_TEX_WIDTH,
+        Math.floor(i / GPUController.COMPUTE_TEX_WIDTH)
+            / GPUController.COMPUTE_TEX_WIDTH,
+    );
+    thingflags.push(0);
 }
 
 const ptGeom = new THREE.BufferGeometry();
 
 ptGeom.setAttribute(
     'position',
-    new THREE.BufferAttribute( new Float32Array(
-        things.flatMap((t, idx) => [1, 0, 0])
-    ), 3 )
+    new THREE.BufferAttribute( new Float32Array(thingpositions), 3 )
 );
 
 ptGeom.setAttribute(
-    'posn',
-    new THREE.BufferAttribute( new Float32Array(
-        things.flatMap(thing => [
-            (thing.computeIdx % GPUController.COMPUTE_TEX_WIDTH)
-                / GPUController.COMPUTE_TEX_WIDTH,
-            Math.floor(thing.computeIdx / GPUController.COMPUTE_TEX_WIDTH)
-                / GPUController.COMPUTE_TEX_WIDTH,
-        ])
-    ), 2 )
+    'uv',
+    new THREE.BufferAttribute( new Float32Array(thinguvs), 2 )
 );
 
 console.log(ptGeom, things, computeController);
@@ -96,12 +97,10 @@ const ptMaterial = new THREE.ShaderMaterial({
 uniform sampler2D texturePosition;
 uniform sampler2D textureVelocity;
 
-attribute vec2 posn;
-
 varying vec3 vColor;
 
 void main() {
-    vec3 pos = texture2D( texturePosition, posn ).xyz;
+    vec3 pos = texture2D( texturePosition, uv ).xyz;
 
     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
 
@@ -115,7 +114,7 @@ void main() {
 varying vec3 vColor;
 
 void main() {
-    gl_FragColor = vec4( vColor, 1.0 );
+    gl_FragColor = vec4( 1.0, 1.0, 1.0, 1.0 );
 }
     `,
 

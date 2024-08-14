@@ -44,7 +44,49 @@ export default class GPUController {
     #createUniforms() {
         const dtUniform = { value: 0.0 };
 
-        this.#uniforms = { dtUniform };
+        const hasInput = {
+            value: new THREE.DataTexture(
+                new Float32Array(COMPUTE_TEX_WIDTH * COMPUTE_TEX_WIDTH * 4),
+                COMPUTE_TEX_WIDTH,
+                COMPUTE_TEX_WIDTH,
+                THREE.RGBAFormat,
+                THREE.FloatType
+            )
+        };
+
+        const positionInput = {
+            value: new THREE.DataTexture(
+                new Float32Array(COMPUTE_TEX_WIDTH * COMPUTE_TEX_WIDTH * 4),
+                COMPUTE_TEX_WIDTH,
+                COMPUTE_TEX_WIDTH,
+                THREE.RGBAFormat,
+                THREE.FloatType
+            ),
+        };
+
+        const velocityInput = {
+            value: new THREE.DataTexture(
+                new Float32Array(COMPUTE_TEX_WIDTH * COMPUTE_TEX_WIDTH * 4),
+                COMPUTE_TEX_WIDTH,
+                COMPUTE_TEX_WIDTH,
+                THREE.RGBAFormat,
+                THREE.FloatType
+            ),
+        };
+
+        /* hasInput.value.onUpdate = () => {
+            if (hasInput.value.image.data[0]) {
+                hasInput.value.image.data.fill(0);
+                hasInput.value.needsUpdate = true;
+            }
+        }; */
+
+        this.#uniforms = {
+            dtUniform,
+            hasInput,
+            positionInput,
+            velocityInput
+        };
     }
 
 
@@ -77,16 +119,21 @@ export default class GPUController {
             'texturePosition',
             `
             uniform float dtUniform;
+            uniform sampler2D hasInput;
+            uniform sampler2D positionInput;
     
             void main() {
                 vec2 uv = gl_FragCoord.xy / resolution.xy;
     
                 vec4 tmpPos = texture2D( texturePosition, uv );
-                vec3 position = tmpPos.xyz;
+                vec4 inputPos = texture2D( positionInput, uv );
+                float doInput = texture2D( hasInput, uv ).x;
+                
+                vec3 position = doInput > 0.0 ? inputPos.xyz : tmpPos.xyz;
+
                 vec3 velocity = texture2D( textureVelocity, uv ).xyz;
     
-                gl_FragColor = vec4( position/*  + velocity * dtUniform * 15. */, 1.0 );
-                gl_FragColor = vec4(position ,1.);
+                gl_FragColor = vec4( position + velocity * dtUniform * 15., 1.0 );
             }
             `,
             this.#positionTexture
@@ -96,6 +143,8 @@ export default class GPUController {
             'textureVelocity',
             `
             uniform float dtUniform;
+            uniform sampler2D hasInput;
+            uniform sampler2D velocityInput;
     
             const float width = resolution.x;
             const float height = resolution.y;
@@ -104,9 +153,14 @@ export default class GPUController {
                 vec2 uv = gl_FragCoord.xy / resolution.xy;
     
                 vec3 myPosition = texture2D( texturePosition, uv ).xyz;
+
                 vec3 myVelocity = texture2D( textureVelocity, uv ).xyz;
+                vec3 inputVelo = texture2D( velocityInput, uv ).xyz;
+                float doInput = texture2D( hasInput, uv ).y;
+
+                vec3 velo = doInput > 0.0 ? inputVelo : myVelocity;
     
-                gl_FragColor = vec4( myVelocity, 1.0 );
+                gl_FragColor = vec4( velo, 1.0 );
             }
             `,
             this.#velocityTexture
@@ -135,6 +189,13 @@ export default class GPUController {
 
 
     tick(dt) {
+        if (isNaN(dt)) {
+            console.warn('dt was NaN');
+            return;
+        }
+
+        console.log(this.#uniforms.hasInput.value.image.data[0])
+        
         this.#uniforms.dtUniform.value = dt;
 
         this.#computer.compute();
@@ -146,44 +207,45 @@ export default class GPUController {
         this.outputUniforms.textureVelocity.value = this.#computer.getCurrentRenderTarget(
             this.#velocityVar
         ).texture;
-
-        /* console.log(
-            this.#positionTexture.image.data[0],
-            this.#velocityTexture.image.data[0]
-        ) */
     }
 
 
     #nextIdx = 0;
 
     addItem(position, velocity) {
-        const posnArr = this.#positionTexture.image.data;
+        this.#uniforms.hasInput.value.image.data[this.#nextIdx * 4 + 0] = 1;
+        this.#uniforms.hasInput.value.image.data[this.#nextIdx * 4 + 1] = 1;
+        this.#uniforms.hasInput.value.image.data[this.#nextIdx * 4 + 2] = 1;
+        this.#uniforms.hasInput.value.image.data[this.#nextIdx * 4 + 3] = 1;
+        this.#uniforms.hasInput.value.needsUpdate = true;
+        
+        const posnArr = this.#uniforms.positionInput.value.image.data;
 
         posnArr[this.#nextIdx * 4 + 0] = position.x;
         posnArr[this.#nextIdx * 4 + 1] = position.y;
         posnArr[this.#nextIdx * 4 + 2] = position.z;
         posnArr[this.#nextIdx * 4 + 3] = 1;
-
-        this.#positionVar.material.uniforms.texturePosition.value = this.#positionTexture;
-
-        this.#computer.doRenderTarget(
-            this.#positionVar.material,
-            this.#positionVar.renderTargets[this.#computer.currentTextureIndex]
-        );
-
-        /* const veloArr = this.#velocityTexture.image.data;
+        this.#uniforms.positionInput.value.needsUpdate = true;
+        
+        const veloArr = this.#uniforms.velocityInput.value.image.data;
 
         veloArr[this.#nextIdx * 4 + 0] = velocity.x;
         veloArr[this.#nextIdx * 4 + 1] = velocity.y;
         veloArr[this.#nextIdx * 4 + 2] = velocity.z;
         veloArr[this.#nextIdx * 4 + 3] = 1;
+        this.#uniforms.velocityInput.value.needsUpdate = true;
 
-        this.#velocityVar.material.uniforms.texturePosition.value = this.#velocityTexture;
 
-        this.#computer.doRenderTarget(
-            this.#velocityVar.material,
-            this.#velocityVar.renderTargets[0]
-        ); */
+        this.#uniforms.dtUniform.value = 0;
+
+        this.#computer.compute();
+        
+        this.#uniforms.hasInput.value.image.data[this.#nextIdx * 4 + 0] = 0;
+        this.#uniforms.hasInput.value.image.data[this.#nextIdx * 4 + 1] = 0;
+        this.#uniforms.hasInput.value.image.data[this.#nextIdx * 4 + 2] = 0;
+        this.#uniforms.hasInput.value.image.data[this.#nextIdx * 4 + 3] = 0;
+        this.#uniforms.hasInput.value.needsUpdate = true;
+
 
         return this.#nextIdx++;
     }
