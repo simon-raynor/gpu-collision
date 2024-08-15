@@ -53,35 +53,29 @@ scene.add( dlight );
 //const tickComputeRenderer = initComputeRenderer(renderer);
 const computeController = new GPUController(renderer);
 
-
+const COMPUTE_TEX_WIDTH = GPUController.COMPUTE_TEX_WIDTH;
 
 const things = [];
-const thingpositions = [];
-const thinguvs = [];
+const thingpositions = new Float32Array(COMPUTE_TEX_WIDTH * COMPUTE_TEX_WIDTH).fill(0);
+const thinguvs = new Float32Array(COMPUTE_TEX_WIDTH * COMPUTE_TEX_WIDTH).fill(0);
 const thingflags = [];
 
-for (let i = 0; i < 10; i++) {
+for (let i = 0; i < COMPUTE_TEX_WIDTH * COMPUTE_TEX_WIDTH; i++) {
+    const posn = new THREE.Vector3().random().addScalar(-0.5).multiplyScalar(25);
+    const velo = new THREE.Vector3().randomDirection().cross(posn).multiplyScalar(Math.random() / 10);
+
     things.push(
-        computeController.addItem(
-            new THREE.Vector3(i * 10, 0, 0),
-            new THREE.Vector3().random()
-        )
+        computeController.addItem(posn, velo)
     );
-    thingpositions.push(0, 0, 0);
-    thinguvs.push(
-        (i % GPUController.COMPUTE_TEX_WIDTH)
-            / GPUController.COMPUTE_TEX_WIDTH,
-        Math.floor(i / GPUController.COMPUTE_TEX_WIDTH)
-            / GPUController.COMPUTE_TEX_WIDTH,
-    );
-    thingflags.push(0);
+    thinguvs[i * 2 + 0] = (i % COMPUTE_TEX_WIDTH) / COMPUTE_TEX_WIDTH;
+    thinguvs[i * 2 + 1] = Math.floor(i / COMPUTE_TEX_WIDTH)/ COMPUTE_TEX_WIDTH;
 }
 
 const ptGeom = new THREE.BufferGeometry();
 
 ptGeom.setAttribute(
     'position',
-    new THREE.BufferAttribute( new Float32Array(thingpositions), 3 )
+    new THREE.BufferAttribute( thingpositions, 3 )
 );
 
 ptGeom.setAttribute(

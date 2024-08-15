@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { GPUComputationRenderer } from 'three/addons/misc/GPUComputationRenderer.js';
 
-const COMPUTE_TEX_WIDTH = 32;
+const COMPUTE_TEX_WIDTH = 250;
+
+const BUFFER_SIZE = COMPUTE_TEX_WIDTH * COMPUTE_TEX_WIDTH * 4;
 
 
 
@@ -46,7 +48,7 @@ export default class GPUController {
 
         const hasInput = {
             value: new THREE.DataTexture(
-                new Float32Array(COMPUTE_TEX_WIDTH * COMPUTE_TEX_WIDTH * 4),
+                new Float32Array(BUFFER_SIZE),
                 COMPUTE_TEX_WIDTH,
                 COMPUTE_TEX_WIDTH,
                 THREE.RGBAFormat,
@@ -56,7 +58,7 @@ export default class GPUController {
 
         const positionInput = {
             value: new THREE.DataTexture(
-                new Float32Array(COMPUTE_TEX_WIDTH * COMPUTE_TEX_WIDTH * 4),
+                new Float32Array(BUFFER_SIZE),
                 COMPUTE_TEX_WIDTH,
                 COMPUTE_TEX_WIDTH,
                 THREE.RGBAFormat,
@@ -66,7 +68,7 @@ export default class GPUController {
 
         const velocityInput = {
             value: new THREE.DataTexture(
-                new Float32Array(COMPUTE_TEX_WIDTH * COMPUTE_TEX_WIDTH * 4),
+                new Float32Array(BUFFER_SIZE),
                 COMPUTE_TEX_WIDTH,
                 COMPUTE_TEX_WIDTH,
                 THREE.RGBAFormat,
@@ -125,11 +127,13 @@ export default class GPUController {
             void main() {
                 vec2 uv = gl_FragCoord.xy / resolution.xy;
     
-                vec4 tmpPos = texture2D( texturePosition, uv );
-                vec4 inputPos = texture2D( positionInput, uv );
+                // check previous
+                vec4 tmpPosn = texture2D( texturePosition, uv );
+                // check input buffer
+                vec4 inputPosn = texture2D( positionInput, uv );
                 float doInput = texture2D( hasInput, uv ).x;
-                
-                vec3 position = doInput > 0.0 ? inputPos.xyz : tmpPos.xyz;
+                // pick buffer vs previous
+                vec3 position = doInput > 0.0 ? inputPosn.xyz : tmpPosn.xyz;
 
                 vec3 velocity = texture2D( textureVelocity, uv ).xyz;
     
@@ -152,15 +156,24 @@ export default class GPUController {
             void main() {
                 vec2 uv = gl_FragCoord.xy / resolution.xy;
     
-                vec3 myPosition = texture2D( texturePosition, uv ).xyz;
+                vec3 position = texture2D( texturePosition, uv ).xyz;
 
-                vec3 myVelocity = texture2D( textureVelocity, uv ).xyz;
+                // check previous
+                vec3 tmpVelo = texture2D( textureVelocity, uv ).xyz;
+                // check input buffer
                 vec3 inputVelo = texture2D( velocityInput, uv ).xyz;
                 float doInput = texture2D( hasInput, uv ).y;
+                // pick buffer vs previous
+                vec3 velocity = doInput > 0.0 ? inputVelo : tmpVelo;
 
-                vec3 velo = doInput > 0.0 ? inputVelo : myVelocity;
+                vec3 toOrigin = length(position) > 1.0
+                            ? normalize(position)
+                            * -dtUniform / (length(position))
+                            : vec3(0.0, 0.0, 0.0);
+
+                velocity += toOrigin;
     
-                gl_FragColor = vec4( velo, 1.0 );
+                gl_FragColor = vec4( velocity, 1.0 );
             }
             `,
             this.#velocityTexture
@@ -199,6 +212,7 @@ export default class GPUController {
         this.#uniforms.dtUniform.value = dt;
 
         this.#computer.compute();
+        this.#resetHasInput();
 
         this.outputUniforms.texturePosition.value = this.#computer.getCurrentRenderTarget(
             this.#positionVar
@@ -235,18 +249,15 @@ export default class GPUController {
         veloArr[this.#nextIdx * 4 + 3] = 1;
         this.#uniforms.velocityInput.value.needsUpdate = true;
 
-
-        this.#uniforms.dtUniform.value = 0;
-
-        this.#computer.compute();
-        
-        this.#uniforms.hasInput.value.image.data[this.#nextIdx * 4 + 0] = 0;
-        this.#uniforms.hasInput.value.image.data[this.#nextIdx * 4 + 1] = 0;
-        this.#uniforms.hasInput.value.image.data[this.#nextIdx * 4 + 2] = 0;
-        this.#uniforms.hasInput.value.image.data[this.#nextIdx * 4 + 3] = 0;
-        this.#uniforms.hasInput.value.needsUpdate = true;
-
-
         return this.#nextIdx++;
+    }
+
+    #resetHasInput() {
+        this.#uniforms.hasInput.value.image.data.fill(
+            0,
+            0,
+            BUFFER_SIZE
+        );
+        this.#uniforms.hasInput.value.needsUpdate = true;
     }
 }
