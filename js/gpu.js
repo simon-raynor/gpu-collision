@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GPUComputationRenderer } from 'three/addons/misc/GPUComputationRenderer.js';
 
-const COMPUTE_TEX_WIDTH = 250;
+const COMPUTE_TEX_WIDTH = 333;
 
 const BUFFER_SIZE = COMPUTE_TEX_WIDTH * COMPUTE_TEX_WIDTH * 4;
 
@@ -166,9 +166,9 @@ export default class GPUController {
                 // pick buffer vs previous
                 vec3 velocity = doInput > 0.0 ? inputVelo : tmpVelo;
 
-                vec3 toOrigin = length(position) > 1.0
+                vec3 toOrigin = length(position) > 0.00001
                             ? normalize(position)
-                            * -dtUniform / (length(position))
+                            * -dtUniform / (length(position) * length(position))
                             : vec3(0.0, 0.0, 0.0);
 
                 velocity += toOrigin;
@@ -206,8 +206,6 @@ export default class GPUController {
             console.warn('dt was NaN');
             return;
         }
-
-        console.log(this.#uniforms.hasInput.value.image.data[0])
         
         this.#uniforms.dtUniform.value = dt;
 
